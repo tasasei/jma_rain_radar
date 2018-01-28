@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-import os, urllib2
+import os, urllib2, urllib
 from datetime import datetime, timedelta
 from PIL import Image, ImageStat
 
@@ -26,13 +26,14 @@ def howOldFile(fpath):
 
 class JmaRainRadar:
     def __init__(self):
-        self.mapPlaceId = {'NW':'44446','NE':'44546',
-                           'SW':'44447','SE':'44547'}
-        self.trimRegion = {'NW':'320x640+320+320','NE':'640x640+0+320',
-                           'SW':'320x960+320+0'}
-        self.urlTemplate='http://www.jma.go.jp/jp/contents/img/radar/4/{0}/{1}.png'
+        # self.mapPlaceId = {'NW':'44446','NE':'44546',
+        #                    'SW':'44447','SE':'44547'}
+        self.mapPlaceId = {'HU':['3','31111']}
+        # self.trimRegion = {'NW':'320x640+320+320','NE':'640x640+0+320',
+        #                    'SW':'320x960+320+0'}
+        self.trimRegion = {'HU':'160x240+160+600'}
+        self.urlTemplate='http://www.jma.go.jp/jp/contents/img/radar/{0}/{1}/{2}.png'
         self.rainFileTemplate = 'rain{0}.png'
-
 
     def isFileOld(self):
         fname = self.rainFileTemplate.format(self.mapPlaceId.keys()[0])
@@ -52,7 +53,7 @@ class JmaRainRadar:
         while deltaMin > -50:
             now5n = now + timedelta(minutes=deltaMin)
             now5n_str = now5n.strftime('%Y%m%d%H%M')
-            url = self.urlTemplate.format('44446',now5n_str)
+            url = self.urlTemplate.format('4','44446',now5n_str)
             # print deltaMin
             # print url
             if canConnect(url):
@@ -67,7 +68,7 @@ class JmaRainRadar:
     
     def dlImage(self,datetime_str):
         for d in self.mapPlaceId:
-            url = self.urlTemplate.format(self.mapPlaceId[d], datetime_str)
+            url = self.urlTemplate.format(self.mapPlaceId[d][0],self.mapPlaceId[d][1], datetime_str)
             os.system( 'wget -q '+ url )
             if d in self.trimRegion:
                 os.system( 'convert -crop ' + self.trimRegion[d] + ' ' +
@@ -78,20 +79,36 @@ class JmaRainRadar:
 
 
     # DLした透過png画像に少しでも色があれば、Trueを返す。
-    def isRainingImage(self):
-        for d in self.mapPlaceId:
-            im = Image.open(self.rainFileTemplate.format(d))
-            st = ImageStat.Stat(im)
-            if st.sum[0] > 0:
-                return True
+    def isRainingImage(self,im):
+        st = ImageStat.Stat(im)
+        if st.sum[0] > 0:
+            return True
         return False
 
 
+    def getImage(self,datetime_str):
+        imArray = []
+        for d in self.mapPlaceId:
+            url = self.urlTemplate.format(self.mapPlaceId[d][0],self.mapPlaceId[d][1], datetime_str)
+            print url
+            os.system( 'wget -q '+ url )
+            if d in self.trimRegion:
+                os.system( 'convert -crop ' + self.trimRegion[d] + ' ' +
+                           os.path.basename(url) + ' ' + self.rainFileTemplate.format(d) )
+                os.remove(os.path.basename(url))
+            else:
+                print os.path.basename(url)
+                os.rename( os.path.basename(url), self.rainFileTemplate.format(d) )
+            imArray += [Image.open( self.rainFileTemplate.format(d) )]
+        return imArray
+
     def isRaining(self):
-        if self.isFileOld():
-            self.dlImage( self.makeUrlDatetime_str() )
-        x = self.isRainingImage()
-        return x
+        imArray = self.getImage( self.makeUrlDatetime_str() )
+        for i in imArray:
+            isRain = self.isRainingImage(i)
+            if isRain == True:
+                break
+        return isRain
 
 def isRaining():
     RainRadar = JmaRainRadar()
